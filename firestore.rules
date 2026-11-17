@@ -1,0 +1,772 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net: default deny everything
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- GLOBAL HELPERS ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    function isOptionalString(data, key, maxLen) {
+      return !(key in data) || data[key] == null || (data[key] is string && data[key].size() <= maxLen);
+    }
+
+    function isStringBounded(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isBoundedStringList(val, maxItems) {
+      return val is list && val.size() <= maxItems && (val.size() == 0 || val[0] is string);
+    }
+
+    // Bootstrapped Super Admin from verified runtime email
+    function isBootstrapSuperAdmin() {
+      return isSignedIn() &&
+             ('email_verified' in request.auth.token) &&
+             request.auth.token.email_verified == true &&
+             ('email' in request.auth.token) &&
+             request.auth.token.email == 'muneerzaki83@gmail.com';
+    }
+
+    function hasActiveStaffDoc() {
+      return isSignedIn() &&
+             exists(/databases/$(database)/documents/staff/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/staff/$(request.auth.uid)).data.status == 'ACTIVE';
+    }
+
+    function staffRole() {
+      return get(/databases/$(database)/documents/staff/$(request.auth.uid)).data.role;
+    }
+
+    function isSuperAdmin() {
+      return isBootstrapSuperAdmin() || (hasActiveStaffDoc() && staffRole() == 'SUPER_ADMIN');
+    }
+
+    function isAdmin() {
+      return isSuperAdmin() || (hasActiveStaffDoc() && staffRole() == 'ADMIN');
+    }
+
+    function isSportsManager() {
+      return isAdmin() || (hasActiveStaffDoc() && staffRole() == 'SPORTS_MANAGER');
+    }
+
+    function isScoreManager() {
+      return isSportsManager() || (hasActiveStaffDoc() && staffRole() == 'SCORE_MANAGER');
+    }
+
+    function isStreamingManager() {
+      return isAdmin() || (hasActiveStaffDoc() && staffRole() == 'STREAMING_MANAGER');
+    }
+
+    function isNewsEditor() {
+      return isAdmin() || (hasActiveStaffDoc() && staffRole() == 'NEWS_EDITOR');
+    }
+
+    function isModerator() {
+      return isAdmin() || (hasActiveStaffDoc() && staffRole() == 'MODERATOR');
+    }
+
+    function isAnyStaff() {
+      return isBootstrapSuperAdmin() || hasActiveStaffDoc();
+    }
+
+    function isUserChatBlocked() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.chatBlocked == true;
+    }
+
+    // --- ENTITY VALIDATION HELPERS ---
+
+    function isValidUserProfile(data) {
+      return isStringBounded(data.userId, 1, 128) &&
+             isStringBounded(data.displayName, 1, 80) &&
+             isOptionalString(data, 'email', 160) &&
+             isOptionalString(data, 'photoUrl', 500) &&
+             data.preferredLanguage in ['en', 'ha', 'fr', 'ar'] &&
+             isBoundedStringList(data.favoriteTeamIds, 20) &&
+             isBoundedStringList(data.favoriteWrestlerIds, 20) &&
+             isBoundedStringList(data.favoriteTournamentIds, 20) &&
+             data.notifyMatchStart is bool &&
+             data.notifyGoals is bool &&
+             data.notifyKokowa is bool &&
+             data.notifyTournaments is bool &&
+             data.notifyNews is bool &&
+             data.chatBlocked is bool &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidStaffMember(data) {
+      return isStringBounded(data.userId, 1, 128) &&
+             isStringBounded(data.email, 3, 160) &&
+             isStringBounded(data.displayName, 1, 80) &&
+             data.role in ['SUPER_ADMIN', 'ADMIN', 'SPORTS_MANAGER', 'SCORE_MANAGER', 'STREAMING_MANAGER', 'NEWS_EDITOR', 'MODERATOR'] &&
+             data.status in ['ACTIVE', 'SUSPENDED'] &&
+             isBoundedStringList(data.permissions, 20) &&
+             isStringBounded(data.assignedBy, 1, 128) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidAuditLog(data) {
+      return isStringBounded(data.actorUid, 1, 128) &&
+             isStringBounded(data.actorEmail, 1, 160) &&
+             isStringBounded(data.actorRole, 1, 40) &&
+             isStringBounded(data.action, 1, 80) &&
+             isStringBounded(data.targetType, 1, 60) &&
+             isStringBounded(data.targetId, 1, 128) &&
+             isStringBounded(data.summary, 1, 300) &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidSportCategory(data) {
+      return isStringBounded(data.slug, 1, 40) &&
+             isStringBounded(data.nameEn, 1, 60) &&
+             isStringBounded(data.nameHa, 1, 60) &&
+             isStringBounded(data.nameFr, 1, 60) &&
+             isStringBounded(data.nameAr, 1, 60) &&
+             isStringBounded(data.iconKey, 1, 40) &&
+             data.traditional is bool &&
+             data.active is bool &&
+             data.sortOrder is int && data.sortOrder >= 0 && data.sortOrder <= 1000 &&
+             data.visibility in ['PUBLIC', 'ARCHIVED'] &&
+             isStringBounded(data.createdBy, 1, 128) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidBroadcast(data) {
+      return isStringBounded(data.title, 1, 120) &&
+             isStringBounded(data.description, 1, 1000) &&
+             isStringBounded(data.sportCategory, 1, 40) &&
+             data.streamType in ['HLS', 'YOUTUBE_LIVE', 'RTMP_HLS'] &&
+             isStringBounded(data.playbackUrl, 1, 600) &&
+             isOptionalString(data, 'youtubeVideoId', 64) &&
+             data.ingestProtocol in ['RTMP', 'SRT', 'OBS_RTMP', 'YOUTUBE', 'MOBILE_LIVE'] &&
+             isStringBounded(data.ingestEndpoint, 1, 300) &&
+             data.streamKeyConfigured is bool &&
+             data.status in ['LIVE', 'UPCOMING', 'OFFLINE', 'ENDED'] &&
+             data.viewerCount is int && data.viewerCount >= 0 && data.viewerCount <= 10000000 &&
+             data.chatEnabled is bool &&
+             data.featured is bool &&
+             isOptionalString(data, 'matchId', 128) &&
+             isStringBounded(data.scheduledLabel, 1, 80) &&
+             data.visibility in ['PUBLIC', 'ARCHIVED'] &&
+             isStringBounded(data.createdBy, 1, 128) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidBroadcastSecret(data) {
+      return isStringBounded(data.broadcastId, 1, 128) &&
+             isStringBounded(data.rtmpServerUrl, 1, 300) &&
+             isStringBounded(data.streamKeyMasked, 1, 120) &&
+             isStringBounded(data.obsProfileNote, 1, 400) &&
+             isStringBounded(data.updatedBy, 1, 128) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidComment(data) {
+      return isStringBounded(data.broadcastId, 1, 128) &&
+             isStringBounded(data.userId, 1, 128) &&
+             isStringBounded(data.userName, 1, 80) &&
+             isOptionalString(data, 'userPhotoUrl', 500) &&
+             isStringBounded(data.message, 1, 400) &&
+             data.deleted is bool &&
+             data.reported is bool &&
+             data.reportCount is int && data.reportCount >= 0 && data.reportCount <= 10000 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidLeague(data) {
+      return isStringBounded(data.name, 1, 80) &&
+             isStringBounded(data.country, 1, 60) &&
+             isStringBounded(data.season, 1, 40) &&
+             isStringBounded(data.sportCategory, 1, 40) &&
+             data.visibility in ['PUBLIC', 'ARCHIVED'] &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidTeam(data) {
+      return isStringBounded(data.name, 1, 80) &&
+             isStringBounded(data.shortName, 1, 12) &&
+             isStringBounded(data.city, 1, 60) &&
+             isStringBounded(data.leagueId, 1, 128) &&
+             isStringBounded(data.badgeColorHex, 4, 16) &&
+             data.played is int && data.played >= 0 && data.played <= 200 &&
+             data.won is int && data.won >= 0 && data.won <= 200 &&
+             data.drawn is int && data.drawn >= 0 && data.drawn <= 200 &&
+             data.lost is int && data.lost >= 0 && data.lost <= 200 &&
+             data.goalsFor is int && data.goalsFor >= 0 && data.goalsFor <= 1000 &&
+             data.goalsAgainst is int && data.goalsAgainst >= 0 && data.goalsAgainst <= 1000 &&
+             data.points is int && data.points >= 0 && data.points <= 600 &&
+             data.visibility in ['PUBLIC', 'ARCHIVED'] &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidSportMatch(data) {
+      return isStringBounded(data.leagueId, 1, 128) &&
+             isStringBounded(data.leagueName, 1, 80) &&
+             isStringBounded(data.sportCategory, 1, 40) &&
+             isStringBounded(data.homeTeamId, 1, 128) &&
+             isStringBounded(data.homeTeamName, 1, 80) &&
+             isStringBounded(data.awayTeamId, 1, 128) &&
+             isStringBounded(data.awayTeamName, 1, 80) &&
+             data.homeScore is int && data.homeScore >= 0 && data.homeScore <= 99 &&
+             data.awayScore is int && data.awayScore >= 0 && data.awayScore <= 99 &&
+             data.status in ['LIVE', 'HALFTIME', 'UPCOMING', 'COMPLETED'] &&
+             isStringBounded(data.matchMinute, 1, 30) &&
+             isStringBounded(data.venue, 1, 100) &&
+             data.sourceType in ['MANUAL', 'LICENSED_API'] &&
+             isOptionalString(data, 'broadcastId', 128) &&
+             data.possessionHome is int && data.possessionHome >= 0 && data.possessionHome <= 100 &&
+             data.shotsHome is int && data.shotsHome >= 0 && data.shotsHome <= 200 &&
+             data.shotsAway is int && data.shotsAway >= 0 && data.shotsAway <= 200 &&
+             data.cornersHome is int && data.cornersHome >= 0 && data.cornersHome <= 100 &&
+             data.cornersAway is int && data.cornersAway >= 0 && data.cornersAway <= 100 &&
+             data.featured is bool &&
+             data.visibility in ['PUBLIC', 'ARCHIVED'] &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidMatchEvent(data) {
+      return isStringBounded(data.matchId, 1, 128) &&
+             data.minute is int && data.minute >= 0 && data.minute <= 150 &&
+             data.type in ['GOAL', 'YELLOW_CARD', 'RED_CARD', 'SUBSTITUTION'] &&
+             data.teamSide in ['HOME', 'AWAY'] &&
+             isStringBounded(data.playerName, 1, 80) &&
+             isOptionalString(data, 'detail', 120) &&
+             data.visibility in ['PUBLIC', 'ARCHIVED'] &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidWrestler(data) {
+      return isStringBounded(data.name, 1, 80) &&
+             isStringBounded(data.nickname, 1, 60) &&
+             isStringBounded(data.village, 1, 80) &&
+             isStringBounded(data.region, 1, 60) &&
+             data.weightKg is int && data.weightKg >= 40 && data.weightKg <= 250 &&
+             data.wins is int && data.wins >= 0 && data.wins <= 500 &&
+             data.losses is int && data.losses >= 0 && data.losses <= 500 &&
+             data.draws is int && data.draws >= 0 && data.draws <= 500 &&
+             data.titlesCount is int && data.titlesCount >= 0 && data.titlesCount <= 100 &&
+             isStringBounded(data.bio, 1, 800) &&
+             isOptionalString(data, 'photoUrl', 500) &&
+             data.featured is bool &&
+             data.visibility in ['PUBLIC', 'ARCHIVED'] &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidKokowaEvent(data) {
+      return isStringBounded(data.title, 1, 120) &&
+             isStringBounded(data.location, 1, 100) &&
+             isStringBounded(data.region, 1, 60) &&
+             data.status in ['LIVE', 'UPCOMING', 'COMPLETED'] &&
+             isStringBounded(data.wrestlerAId, 1, 128) &&
+             isStringBounded(data.wrestlerAName, 1, 80) &&
+             isStringBounded(data.wrestlerBId, 1, 128) &&
+             isStringBounded(data.wrestlerBName, 1, 80) &&
+             isOptionalString(data, 'winnerName', 80) &&
+             isStringBounded(data.roundLabel, 1, 80) &&
+             isOptionalString(data, 'broadcastId', 128) &&
+             isStringBounded(data.scheduledLabel, 1, 80) &&
+             data.visibility in ['PUBLIC', 'ARCHIVED'] &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidTournament(data) {
+      return isStringBounded(data.name, 1, 120) &&
+             isStringBounded(data.sportCategory, 1, 40) &&
+             isStringBounded(data.season, 1, 40) &&
+             isStringBounded(data.location, 1, 100) &&
+             data.status in ['ONGOING', 'UPCOMING', 'COMPLETED'] &&
+             isOptionalString(data, 'championName', 80) &&
+             isBoundedStringList(data.participantNames, 32) &&
+             isBoundedStringList(data.knockoutBracketSummary, 24) &&
+             isOptionalString(data, 'announcement', 400) &&
+             data.popular is bool &&
+             data.visibility in ['PUBLIC', 'ARCHIVED'] &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidNewsArticle(data) {
+      return isStringBounded(data.title, 1, 160) &&
+             isStringBounded(data.summary, 1, 300) &&
+             isStringBounded(data.body, 1, 4000) &&
+             isStringBounded(data.sportCategory, 1, 40) &&
+             isStringBounded(data.authorName, 1, 80) &&
+             isOptionalString(data, 'imageUrl', 500) &&
+             data.breaking is bool &&
+             data.visibility in ['PUBLIC', 'ARCHIVED'] &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidHighlightVideo(data) {
+      return isStringBounded(data.title, 1, 140) &&
+             isStringBounded(data.sportCategory, 1, 40) &&
+             isStringBounded(data.durationLabel, 1, 20) &&
+             isStringBounded(data.videoUrl, 1, 600) &&
+             isOptionalString(data, 'youtubeVideoId', 64) &&
+             data.viewCount is int && data.viewCount >= 0 && data.viewCount <= 100000000 &&
+             data.featured is bool &&
+             data.visibility in ['PUBLIC', 'ARCHIVED'] &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidSponsorBanner(data) {
+      return isStringBounded(data.title, 1, 100) &&
+             isStringBounded(data.subtitle, 1, 200) &&
+             isStringBounded(data.sponsorName, 1, 80) &&
+             isOptionalString(data, 'ctaUrl', 500) &&
+             data.active is bool &&
+             data.visibility in ['PUBLIC', 'ARCHIVED'] &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    // --- COLLECTION RULES ---
+
+    // 1. User Profiles (PII isolated to owner or Moderator/Admin)
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isModerator());
+      allow list: if isBootstrapSuperAdmin();
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().chatBlocked == false &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'preferredLanguage', 'favoriteTeamIds', 'favoriteWrestlerIds', 'favoriteTournamentIds', 'notifyMatchStart', 'notifyGoals', 'notifyKokowa', 'notifyTournaments', 'notifyNews', 'chatBlocked', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'displayName', 'email', 'photoUrl', 'preferredLanguage', 'favoriteTeamIds', 'favoriteWrestlerIds', 'favoriteTournamentIds', 'notifyMatchStart', 'notifyGoals', 'notifyKokowa', 'notifyTournaments', 'notifyNews', 'chatBlocked', 'createdAt', 'updatedAt']) &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt && (
+                         (
+                           request.auth.uid == userId &&
+                           incoming().chatBlocked == existing().chatBlocked &&
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'displayName', 'email', 'photoUrl', 'preferredLanguage',
+                             'favoriteTeamIds', 'favoriteWrestlerIds', 'favoriteTournamentIds',
+                             'notifyMatchStart', 'notifyGoals', 'notifyKokowa', 'notifyTournaments', 'notifyNews', 'updatedAt'
+                           ])
+                         ) || (
+                           isModerator() &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['chatBlocked', 'updatedAt'])
+                         )
+                       );
+
+      allow delete: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isSuperAdmin());
+    }
+
+    // 2. Staff RBAC
+    match /staff/{staffId} {
+      allow get: if isSignedIn() && isValidId(staffId) && (request.auth.uid == staffId || isAdmin());
+      allow list: if isBootstrapSuperAdmin();
+
+      allow create: if isValidId(staffId) &&
+                       isSuperAdmin() &&
+                       incoming().userId == staffId &&
+                       incoming().keys().hasAll(['userId', 'email', 'displayName', 'role', 'status', 'permissions', 'assignedBy', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'email', 'displayName', 'role', 'status', 'permissions', 'assignedBy', 'createdAt', 'updatedAt']) &&
+                       isValidStaffMember(incoming());
+
+      allow update: if isValidId(staffId) &&
+                       isSuperAdmin() &&
+                       isValidStaffMember(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'email', 'displayName', 'role', 'status', 'permissions', 'assignedBy', 'updatedAt'
+                       ]);
+
+      allow delete: if isValidId(staffId) && isSuperAdmin();
+    }
+
+    // 3. Immutable Audit Logs
+    match /audit_logs/{logId} {
+      allow get: if isValidId(logId) && isAdmin();
+      allow list: if isBootstrapSuperAdmin();
+
+      allow create: if isValidId(logId) &&
+                       isAnyStaff() &&
+                       incoming().actorUid == request.auth.uid &&
+                       incoming().keys().hasAll(['actorUid', 'actorEmail', 'actorRole', 'action', 'targetType', 'targetId', 'summary', 'createdAt']) &&
+                       incoming().keys().hasOnly(['actorUid', 'actorEmail', 'actorRole', 'action', 'targetType', 'targetId', 'summary', 'createdAt']) &&
+                       isValidAuditLog(incoming());
+
+      allow update, delete: if false;
+    }
+
+    // 4. Dynamic Sport Categories
+    match /sport_categories/{categoryId} {
+      allow get: if isSignedIn() && isValidId(categoryId) && (existing().visibility == 'PUBLIC' || isAnyStaff());
+      allow list: if isSignedIn() && (existing().visibility == 'PUBLIC' || isBootstrapSuperAdmin());
+
+      allow create: if isValidId(categoryId) &&
+                       isSportsManager() &&
+                       incoming().createdBy == request.auth.uid &&
+                       incoming().keys().hasAll(['slug', 'nameEn', 'nameHa', 'nameFr', 'nameAr', 'iconKey', 'traditional', 'active', 'sortOrder', 'visibility', 'createdBy', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['slug', 'nameEn', 'nameHa', 'nameFr', 'nameAr', 'iconKey', 'traditional', 'active', 'sortOrder', 'visibility', 'createdBy', 'createdAt', 'updatedAt']) &&
+                       isValidSportCategory(incoming());
+
+      allow update: if isValidId(categoryId) &&
+                       isSportsManager() &&
+                       isValidSportCategory(incoming()) &&
+                       incoming().createdBy == existing().createdBy &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'slug', 'nameEn', 'nameHa', 'nameFr', 'nameAr', 'iconKey', 'traditional', 'active', 'sortOrder', 'visibility', 'updatedAt'
+                       ]);
+
+      allow delete: if isValidId(categoryId) && isAdmin();
+    }
+
+    // 5. Broadcasts & Live Chat
+    match /broadcasts/{broadcastId} {
+      allow get: if isSignedIn() && isValidId(broadcastId) && (existing().visibility == 'PUBLIC' || isAnyStaff());
+      allow list: if isSignedIn() && (existing().visibility == 'PUBLIC' || isBootstrapSuperAdmin());
+
+      allow create: if isValidId(broadcastId) &&
+                       isStreamingManager() &&
+                       incoming().createdBy == request.auth.uid &&
+                       incoming().keys().hasAll(['title', 'description', 'sportCategory', 'streamType', 'playbackUrl', 'ingestProtocol', 'ingestEndpoint', 'streamKeyConfigured', 'status', 'viewerCount', 'chatEnabled', 'featured', 'scheduledLabel', 'visibility', 'createdBy', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['title', 'description', 'sportCategory', 'streamType', 'playbackUrl', 'youtubeVideoId', 'ingestProtocol', 'ingestEndpoint', 'streamKeyConfigured', 'status', 'viewerCount', 'chatEnabled', 'featured', 'matchId', 'scheduledLabel', 'visibility', 'createdBy', 'createdAt', 'updatedAt']) &&
+                       isValidBroadcast(incoming());
+
+      allow update: if isValidId(broadcastId) &&
+                       isValidBroadcast(incoming()) &&
+                       incoming().createdBy == existing().createdBy &&
+                       incoming().createdAt == existing().createdAt && (
+                         (
+                           isStreamingManager() &&
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'title', 'description', 'sportCategory', 'streamType', 'playbackUrl', 'youtubeVideoId',
+                             'ingestProtocol', 'ingestEndpoint', 'streamKeyConfigured', 'status', 'viewerCount',
+                             'chatEnabled', 'featured', 'matchId', 'scheduledLabel', 'visibility', 'updatedAt'
+                           ])
+                         ) || (
+                           isModerator() &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['chatEnabled', 'updatedAt'])
+                         )
+                       );
+
+      allow delete: if isValidId(broadcastId) && isAdmin();
+
+      // Live Chat Subcollection
+      match /comments/{commentId} {
+        allow get: if isSignedIn() && isValidId(commentId) && (existing().deleted == false || isModerator());
+        allow list: if isSignedIn() && (existing().deleted == false || isBootstrapSuperAdmin());
+
+        allow create: if isSignedIn() &&
+                         isValidId(broadcastId) &&
+                         isValidId(commentId) &&
+                         incoming().broadcastId == broadcastId &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().deleted == false &&
+                         incoming().reported == false &&
+                         incoming().reportCount == 0 &&
+                         incoming().keys().hasAll(['broadcastId', 'userId', 'userName', 'message', 'deleted', 'reported', 'reportCount', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['broadcastId', 'userId', 'userName', 'userPhotoUrl', 'message', 'deleted', 'reported', 'reportCount', 'createdAt', 'updatedAt']) &&
+                         isValidComment(incoming()) &&
+                         exists(/databases/$(database)/documents/broadcasts/$(broadcastId)) &&
+                         get(/databases/$(database)/documents/broadcasts/$(broadcastId)).data.chatEnabled == true &&
+                         !isUserChatBlocked();
+
+        allow update: if isSignedIn() &&
+                         isValidId(broadcastId) &&
+                         isValidId(commentId) &&
+                         isValidComment(incoming()) &&
+                         incoming().broadcastId == existing().broadcastId &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt && (
+                           (
+                             isModerator() &&
+                             incoming().diff(existing()).affectedKeys().hasOnly(['deleted', 'reported', 'updatedAt'])
+                           ) || (
+                             incoming().reported == true &&
+                             incoming().reportCount == existing().reportCount + 1 &&
+                             incoming().diff(existing()).affectedKeys().hasOnly(['reported', 'reportCount', 'updatedAt'])
+                           )
+                         );
+
+        allow delete: if isSignedIn() && isValidId(commentId) && (existing().userId == request.auth.uid || isModerator());
+      }
+    }
+
+    // 6. Restricted Broadcast Secrets (Never readable by public viewers)
+    match /broadcast_secrets/{broadcastId} {
+      allow get: if isValidId(broadcastId) && isStreamingManager();
+      allow list: if isBootstrapSuperAdmin();
+
+      allow create: if isValidId(broadcastId) &&
+                       isStreamingManager() &&
+                       incoming().broadcastId == broadcastId &&
+                       incoming().updatedBy == request.auth.uid &&
+                       incoming().keys().hasAll(['broadcastId', 'rtmpServerUrl', 'streamKeyMasked', 'obsProfileNote', 'updatedBy', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['broadcastId', 'rtmpServerUrl', 'streamKeyMasked', 'obsProfileNote', 'updatedBy', 'updatedAt']) &&
+                       isValidBroadcastSecret(incoming()) &&
+                       exists(/databases/$(database)/documents/broadcasts/$(broadcastId));
+
+      allow update: if isValidId(broadcastId) &&
+                       isStreamingManager() &&
+                       isValidBroadcastSecret(incoming()) &&
+                       incoming().broadcastId == existing().broadcastId &&
+                       incoming().updatedBy == request.auth.uid &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['rtmpServerUrl', 'streamKeyMasked', 'obsProfileNote', 'updatedBy', 'updatedAt']);
+
+      allow delete: if isValidId(broadcastId) && isAdmin();
+    }
+
+    // 7. Leagues & Teams
+    match /leagues/{leagueId} {
+      allow get: if isSignedIn() && isValidId(leagueId) && (existing().visibility == 'PUBLIC' || isAnyStaff());
+      allow list: if isSignedIn() && (existing().visibility == 'PUBLIC' || isBootstrapSuperAdmin());
+
+      allow create: if isValidId(leagueId) &&
+                       isSportsManager() &&
+                       incoming().keys().hasAll(['name', 'country', 'season', 'sportCategory', 'visibility', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['name', 'country', 'season', 'sportCategory', 'visibility', 'createdAt', 'updatedAt']) &&
+                       isValidLeague(incoming());
+
+      allow update: if isValidId(leagueId) &&
+                       isSportsManager() &&
+                       isValidLeague(incoming()) &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['name', 'country', 'season', 'sportCategory', 'visibility', 'updatedAt']);
+
+      allow delete: if isValidId(leagueId) && isAdmin();
+    }
+
+    match /teams/{teamId} {
+      allow get: if isSignedIn() && isValidId(teamId) && (existing().visibility == 'PUBLIC' || isAnyStaff());
+      allow list: if isSignedIn() && (existing().visibility == 'PUBLIC' || isBootstrapSuperAdmin());
+
+      allow create: if isValidId(teamId) &&
+                       isSportsManager() &&
+                       incoming().keys().hasAll(['name', 'shortName', 'city', 'leagueId', 'badgeColorHex', 'played', 'won', 'drawn', 'lost', 'goalsFor', 'goalsAgainst', 'points', 'visibility', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['name', 'shortName', 'city', 'leagueId', 'badgeColorHex', 'played', 'won', 'drawn', 'lost', 'goalsFor', 'goalsAgainst', 'points', 'visibility', 'createdAt', 'updatedAt']) &&
+                       isValidTeam(incoming());
+
+      allow update: if isValidId(teamId) &&
+                       isScoreManager() &&
+                       isValidTeam(incoming()) &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'name', 'shortName', 'city', 'leagueId', 'badgeColorHex',
+                         'played', 'won', 'drawn', 'lost', 'goalsFor', 'goalsAgainst', 'points', 'visibility', 'updatedAt'
+                       ]);
+
+      allow delete: if isValidId(teamId) && isAdmin();
+    }
+
+    // 8. Matches & Match Events
+    match /matches/{matchId} {
+      allow get: if isSignedIn() && isValidId(matchId) && (existing().visibility == 'PUBLIC' || isAnyStaff());
+      allow list: if isSignedIn() && (existing().visibility == 'PUBLIC' || isBootstrapSuperAdmin());
+
+      allow create: if isValidId(matchId) &&
+                       isScoreManager() &&
+                       incoming().keys().hasAll(['leagueId', 'leagueName', 'sportCategory', 'homeTeamId', 'homeTeamName', 'awayTeamId', 'awayTeamName', 'homeScore', 'awayScore', 'status', 'matchMinute', 'venue', 'sourceType', 'possessionHome', 'shotsHome', 'shotsAway', 'cornersHome', 'cornersAway', 'featured', 'visibility', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['leagueId', 'leagueName', 'sportCategory', 'homeTeamId', 'homeTeamName', 'awayTeamId', 'awayTeamName', 'homeScore', 'awayScore', 'status', 'matchMinute', 'venue', 'sourceType', 'broadcastId', 'possessionHome', 'shotsHome', 'shotsAway', 'cornersHome', 'cornersAway', 'featured', 'visibility', 'createdAt', 'updatedAt']) &&
+                       isValidSportMatch(incoming());
+
+      allow update: if isValidId(matchId) &&
+                       isScoreManager() &&
+                       isValidSportMatch(incoming()) &&
+                       (existing().status != 'COMPLETED' || isAdmin()) &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'leagueId', 'leagueName', 'sportCategory', 'homeTeamId', 'homeTeamName', 'awayTeamId', 'awayTeamName',
+                         'homeScore', 'awayScore', 'status', 'matchMinute', 'venue', 'sourceType', 'broadcastId',
+                         'possessionHome', 'shotsHome', 'shotsAway', 'cornersHome', 'cornersAway', 'featured', 'visibility', 'updatedAt'
+                       ]);
+
+      allow delete: if isValidId(matchId) && isAdmin();
+
+      match /events/{eventId} {
+        allow get: if isSignedIn() && isValidId(eventId) && (existing().visibility == 'PUBLIC' || isAnyStaff());
+        allow list: if isSignedIn() && (existing().visibility == 'PUBLIC' || isBootstrapSuperAdmin());
+
+        allow create: if isValidId(matchId) &&
+                         isValidId(eventId) &&
+                         isScoreManager() &&
+                         incoming().matchId == matchId &&
+                         incoming().keys().hasAll(['matchId', 'minute', 'type', 'teamSide', 'playerName', 'visibility', 'createdAt']) &&
+                         incoming().keys().hasOnly(['matchId', 'minute', 'type', 'teamSide', 'playerName', 'detail', 'visibility', 'createdAt']) &&
+                         isValidMatchEvent(incoming()) &&
+                         exists(/databases/$(database)/documents/matches/$(matchId));
+
+        allow update: if false;
+        allow delete: if isValidId(eventId) && isScoreManager();
+      }
+    }
+
+    // 9. Kokowa Wrestlers & Events
+    match /wrestlers/{wrestlerId} {
+      allow get: if isSignedIn() && isValidId(wrestlerId) && (existing().visibility == 'PUBLIC' || isAnyStaff());
+      allow list: if isSignedIn() && (existing().visibility == 'PUBLIC' || isBootstrapSuperAdmin());
+
+      allow create: if isValidId(wrestlerId) &&
+                       isSportsManager() &&
+                       incoming().keys().hasAll(['name', 'nickname', 'village', 'region', 'weightKg', 'wins', 'losses', 'draws', 'titlesCount', 'bio', 'featured', 'visibility', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['name', 'nickname', 'village', 'region', 'weightKg', 'wins', 'losses', 'draws', 'titlesCount', 'bio', 'photoUrl', 'featured', 'visibility', 'createdAt', 'updatedAt']) &&
+                       isValidWrestler(incoming());
+
+      allow update: if isValidId(wrestlerId) &&
+                       isSportsManager() &&
+                       isValidWrestler(incoming()) &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'name', 'nickname', 'village', 'region', 'weightKg', 'wins', 'losses', 'draws', 'titlesCount', 'bio', 'photoUrl', 'featured', 'visibility', 'updatedAt'
+                       ]);
+
+      allow delete: if isValidId(wrestlerId) && isAdmin();
+    }
+
+    match /kokowa_events/{eventId} {
+      allow get: if isSignedIn() && isValidId(eventId) && (existing().visibility == 'PUBLIC' || isAnyStaff());
+      allow list: if isSignedIn() && (existing().visibility == 'PUBLIC' || isBootstrapSuperAdmin());
+
+      allow create: if isValidId(eventId) &&
+                       isSportsManager() &&
+                       incoming().keys().hasAll(['title', 'location', 'region', 'status', 'wrestlerAId', 'wrestlerAName', 'wrestlerBId', 'wrestlerBName', 'roundLabel', 'scheduledLabel', 'visibility', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['title', 'location', 'region', 'status', 'wrestlerAId', 'wrestlerAName', 'wrestlerBId', 'wrestlerBName', 'winnerName', 'roundLabel', 'broadcastId', 'scheduledLabel', 'visibility', 'createdAt', 'updatedAt']) &&
+                       isValidKokowaEvent(incoming());
+
+      allow update: if isValidId(eventId) &&
+                       isScoreManager() &&
+                       isValidKokowaEvent(incoming()) &&
+                       (existing().status != 'COMPLETED' || isAdmin()) &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'title', 'location', 'region', 'status', 'wrestlerAId', 'wrestlerAName', 'wrestlerBId', 'wrestlerBName',
+                         'winnerName', 'roundLabel', 'broadcastId', 'scheduledLabel', 'visibility', 'updatedAt'
+                       ]);
+
+      allow delete: if isValidId(eventId) && isAdmin();
+    }
+
+    // 10. Tournaments
+    match /tournaments/{tournamentId} {
+      allow get: if isSignedIn() && isValidId(tournamentId) && (existing().visibility == 'PUBLIC' || isAnyStaff());
+      allow list: if isSignedIn() && (existing().visibility == 'PUBLIC' || isBootstrapSuperAdmin());
+
+      allow create: if isValidId(tournamentId) &&
+                       isSportsManager() &&
+                       incoming().keys().hasAll(['name', 'sportCategory', 'season', 'location', 'status', 'participantNames', 'knockoutBracketSummary', 'popular', 'visibility', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['name', 'sportCategory', 'season', 'location', 'status', 'championName', 'participantNames', 'knockoutBracketSummary', 'announcement', 'popular', 'visibility', 'createdAt', 'updatedAt']) &&
+                       isValidTournament(incoming());
+
+      allow update: if isValidId(tournamentId) &&
+                       isSportsManager() &&
+                       isValidTournament(incoming()) &&
+                       (existing().status != 'COMPLETED' || isAdmin()) &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'name', 'sportCategory', 'season', 'location', 'status', 'championName',
+                         'participantNames', 'knockoutBracketSummary', 'announcement', 'popular', 'visibility', 'updatedAt'
+                       ]);
+
+      allow delete: if isValidId(tournamentId) && isAdmin();
+    }
+
+    // 11. News, Highlights & Sponsor Banners
+    match /news/{newsId} {
+      allow get: if isSignedIn() && isValidId(newsId) && (existing().visibility == 'PUBLIC' || isAnyStaff());
+      allow list: if isSignedIn() && (existing().visibility == 'PUBLIC' || isBootstrapSuperAdmin());
+
+      allow create: if isValidId(newsId) &&
+                       isNewsEditor() &&
+                       incoming().keys().hasAll(['title', 'summary', 'body', 'sportCategory', 'authorName', 'breaking', 'visibility', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['title', 'summary', 'body', 'sportCategory', 'authorName', 'imageUrl', 'breaking', 'visibility', 'createdAt', 'updatedAt']) &&
+                       isValidNewsArticle(incoming());
+
+      allow update: if isValidId(newsId) &&
+                       isNewsEditor() &&
+                       isValidNewsArticle(incoming()) &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'title', 'summary', 'body', 'sportCategory', 'authorName', 'imageUrl', 'breaking', 'visibility', 'updatedAt'
+                       ]);
+
+      allow delete: if isValidId(newsId) && isAdmin();
+    }
+
+    match /highlights/{highlightId} {
+      allow get: if isSignedIn() && isValidId(highlightId) && (existing().visibility == 'PUBLIC' || isAnyStaff());
+      allow list: if isSignedIn() && (existing().visibility == 'PUBLIC' || isBootstrapSuperAdmin());
+
+      allow create: if isValidId(highlightId) &&
+                       (isStreamingManager() || isNewsEditor()) &&
+                       incoming().keys().hasAll(['title', 'sportCategory', 'durationLabel', 'videoUrl', 'viewCount', 'featured', 'visibility', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['title', 'sportCategory', 'durationLabel', 'videoUrl', 'youtubeVideoId', 'viewCount', 'featured', 'visibility', 'createdAt', 'updatedAt']) &&
+                       isValidHighlightVideo(incoming());
+
+      allow update: if isValidId(highlightId) &&
+                       (isStreamingManager() || isNewsEditor()) &&
+                       isValidHighlightVideo(incoming()) &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'title', 'sportCategory', 'durationLabel', 'videoUrl', 'youtubeVideoId', 'viewCount', 'featured', 'visibility', 'updatedAt'
+                       ]);
+
+      allow delete: if isValidId(highlightId) && isAdmin();
+    }
+
+    match /banners/{bannerId} {
+      allow get: if isSignedIn() && isValidId(bannerId) && (existing().visibility == 'PUBLIC' || isAnyStaff());
+      allow list: if isSignedIn() && (existing().visibility == 'PUBLIC' || isBootstrapSuperAdmin());
+
+      allow create: if isValidId(bannerId) &&
+                       isAdmin() &&
+                       incoming().keys().hasAll(['title', 'subtitle', 'sponsorName', 'active', 'visibility', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['title', 'subtitle', 'sponsorName', 'ctaUrl', 'active', 'visibility', 'createdAt', 'updatedAt']) &&
+                       isValidSponsorBanner(incoming());
+
+      allow update: if isValidId(bannerId) &&
+                       isAdmin() &&
+                       isValidSponsorBanner(incoming()) &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'title', 'subtitle', 'sponsorName', 'ctaUrl', 'active', 'visibility', 'updatedAt'
+                       ]);
+
+      allow delete: if isValidId(bannerId) && isAdmin();
+    }
+  }
+}

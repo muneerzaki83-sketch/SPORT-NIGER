@@ -1,0 +1,31 @@
+{
+  "firestore": [
+    {
+      "database": "ai-studio-android-sportnig-5079ffaa-a494-462f-8296-8ef4d909901e",
+      "rules": "firestore.rules"
+    }
+  ],
+  "hosting": {
+    "public": "web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "emulators": {
+    "firestore": {
+      "host": "127.0.0.1",
+      "port": 8085
+    },
+    "ui": {
+      "enabled": false
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "SPORT NIGER",
+  "description": "Multilingual sports streaming platform for football, Nigerien traditional wrestling (Kokowa), and tournaments.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

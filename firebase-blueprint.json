@@ -1,0 +1,415 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated SPORT NIGER viewer profile, favorites, and notification/language preferences.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID" },
+        "displayName": { "type": "string", "description": "Display name" },
+        "email": { "type": "string", "description": "Optional user email" },
+        "photoUrl": { "type": "string", "description": "Optional profile photo URL" },
+        "preferredLanguage": { "type": "string", "enum": ["en", "ha", "fr", "ar"] },
+        "favoriteTeamIds": { "type": "array", "description": "Up to 20 favorite team IDs" },
+        "favoriteWrestlerIds": { "type": "array", "description": "Up to 20 favorite wrestler IDs" },
+        "favoriteTournamentIds": { "type": "array", "description": "Up to 20 favorite tournament IDs" },
+        "notifyMatchStart": { "type": "boolean" },
+        "notifyGoals": { "type": "boolean" },
+        "notifyKokowa": { "type": "boolean" },
+        "notifyTournaments": { "type": "boolean" },
+        "notifyNews": { "type": "boolean" },
+        "chatBlocked": { "type": "boolean", "description": "True if user is blocked from live chat by moderation" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "displayName", "preferredLanguage", "favoriteTeamIds", "favoriteWrestlerIds", "favoriteTournamentIds", "notifyMatchStart", "notifyGoals", "notifyKokowa", "notifyTournaments", "notifyNews", "chatBlocked", "createdAt", "updatedAt"]
+    },
+    "StaffMember": {
+      "title": "StaffMember",
+      "description": "Staff RBAC record controlling administrative capabilities.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["SUPER_ADMIN", "ADMIN", "SPORTS_MANAGER", "SCORE_MANAGER", "STREAMING_MANAGER", "NEWS_EDITOR", "MODERATOR"] },
+        "status": { "type": "string", "enum": ["ACTIVE", "SUSPENDED"] },
+        "permissions": { "type": "array" },
+        "assignedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "email", "displayName", "role", "status", "permissions", "assignedBy", "createdAt", "updatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable administrative action log.",
+      "type": "object",
+      "properties": {
+        "actorUid": { "type": "string" },
+        "actorEmail": { "type": "string" },
+        "actorRole": { "type": "string" },
+        "action": { "type": "string" },
+        "targetType": { "type": "string" },
+        "targetId": { "type": "string" },
+        "summary": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["actorUid", "actorEmail", "actorRole", "action", "targetType", "targetId", "summary", "createdAt"]
+    },
+    "SportCategory": {
+      "title": "SportCategory",
+      "description": "Dynamic sport category including Football, Kokowa, and additional traditional sports.",
+      "type": "object",
+      "properties": {
+        "slug": { "type": "string" },
+        "nameEn": { "type": "string" },
+        "nameHa": { "type": "string" },
+        "nameFr": { "type": "string" },
+        "nameAr": { "type": "string" },
+        "iconKey": { "type": "string" },
+        "traditional": { "type": "boolean" },
+        "active": { "type": "boolean" },
+        "sortOrder": { "type": "integer" },
+        "visibility": { "type": "string", "enum": ["PUBLIC", "ARCHIVED"] },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["slug", "nameEn", "nameHa", "nameFr", "nameAr", "iconKey", "traditional", "active", "sortOrder", "visibility", "createdBy", "createdAt", "updatedAt"]
+    },
+    "Broadcast": {
+      "title": "Broadcast",
+      "description": "Live or upcoming sports stream metadata (public playback URL only; private keys stored separately).",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "sportCategory": { "type": "string" },
+        "streamType": { "type": "string", "enum": ["HLS", "YOUTUBE_LIVE", "RTMP_HLS"] },
+        "playbackUrl": { "type": "string" },
+        "youtubeVideoId": { "type": "string" },
+        "ingestProtocol": { "type": "string", "enum": ["RTMP", "SRT", "OBS_RTMP", "YOUTUBE", "MOBILE_LIVE"] },
+        "ingestEndpoint": { "type": "string" },
+        "streamKeyConfigured": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["LIVE", "UPCOMING", "OFFLINE", "ENDED"] },
+        "viewerCount": { "type": "integer" },
+        "chatEnabled": { "type": "boolean" },
+        "featured": { "type": "boolean" },
+        "matchId": { "type": "string" },
+        "scheduledLabel": { "type": "string" },
+        "visibility": { "type": "string", "enum": ["PUBLIC", "ARCHIVED"] },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "description", "sportCategory", "streamType", "playbackUrl", "ingestProtocol", "ingestEndpoint", "streamKeyConfigured", "status", "viewerCount", "chatEnabled", "featured", "scheduledLabel", "visibility", "createdBy", "createdAt", "updatedAt"]
+    },
+    "BroadcastSecret": {
+      "title": "BroadcastSecret",
+      "description": "Restricted ingest credentials reference for streaming managers and admins only.",
+      "type": "object",
+      "properties": {
+        "broadcastId": { "type": "string" },
+        "rtmpServerUrl": { "type": "string" },
+        "streamKeyMasked": { "type": "string" },
+        "obsProfileNote": { "type": "string" },
+        "updatedBy": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["broadcastId", "rtmpServerUrl", "streamKeyMasked", "obsProfileNote", "updatedBy", "updatedAt"]
+    },
+    "ChatComment": {
+      "title": "ChatComment",
+      "description": "Live broadcast chat comment with moderation controls.",
+      "type": "object",
+      "properties": {
+        "broadcastId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userPhotoUrl": { "type": "string" },
+        "message": { "type": "string" },
+        "deleted": { "type": "boolean" },
+        "reported": { "type": "boolean" },
+        "reportCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["broadcastId", "userId", "userName", "message", "deleted", "reported", "reportCount", "createdAt", "updatedAt"]
+    },
+    "League": {
+      "title": "League",
+      "description": "Football or sports league metadata.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "country": { "type": "string" },
+        "season": { "type": "string" },
+        "sportCategory": { "type": "string" },
+        "visibility": { "type": "string", "enum": ["PUBLIC", "ARCHIVED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "country", "season", "sportCategory", "visibility", "createdAt", "updatedAt"]
+    },
+    "Team": {
+      "title": "Team",
+      "description": "Football club or national team standings entry.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "shortName": { "type": "string" },
+        "city": { "type": "string" },
+        "leagueId": { "type": "string" },
+        "badgeColorHex": { "type": "string" },
+        "played": { "type": "integer" },
+        "won": { "type": "integer" },
+        "drawn": { "type": "integer" },
+        "lost": { "type": "integer" },
+        "goalsFor": { "type": "integer" },
+        "goalsAgainst": { "type": "integer" },
+        "points": { "type": "integer" },
+        "visibility": { "type": "string", "enum": ["PUBLIC", "ARCHIVED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "shortName", "city", "leagueId", "badgeColorHex", "played", "won", "drawn", "lost", "goalsFor", "goalsAgainst", "points", "visibility", "createdAt", "updatedAt"]
+    },
+    "SportMatch": {
+      "title": "SportMatch",
+      "description": "Live, upcoming, or completed football/sports match.",
+      "type": "object",
+      "properties": {
+        "leagueId": { "type": "string" },
+        "leagueName": { "type": "string" },
+        "sportCategory": { "type": "string" },
+        "homeTeamId": { "type": "string" },
+        "homeTeamName": { "type": "string" },
+        "awayTeamId": { "type": "string" },
+        "awayTeamName": { "type": "string" },
+        "homeScore": { "type": "integer" },
+        "awayScore": { "type": "integer" },
+        "status": { "type": "string", "enum": ["LIVE", "HALFTIME", "UPCOMING", "COMPLETED"] },
+        "matchMinute": { "type": "string" },
+        "venue": { "type": "string" },
+        "sourceType": { "type": "string", "enum": ["MANUAL", "LICENSED_API"] },
+        "broadcastId": { "type": "string" },
+        "possessionHome": { "type": "integer" },
+        "shotsHome": { "type": "integer" },
+        "shotsAway": { "type": "integer" },
+        "cornersHome": { "type": "integer" },
+        "cornersAway": { "type": "integer" },
+        "featured": { "type": "boolean" },
+        "visibility": { "type": "string", "enum": ["PUBLIC", "ARCHIVED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["leagueId", "leagueName", "sportCategory", "homeTeamId", "homeTeamName", "awayTeamId", "awayTeamName", "homeScore", "awayScore", "status", "matchMinute", "venue", "sourceType", "possessionHome", "shotsHome", "shotsAway", "cornersHome", "cornersAway", "featured", "visibility", "createdAt", "updatedAt"]
+    },
+    "MatchEvent": {
+      "title": "MatchEvent",
+      "description": "Goal, yellow card, red card, or substitution event in a match.",
+      "type": "object",
+      "properties": {
+        "matchId": { "type": "string" },
+        "minute": { "type": "integer" },
+        "type": { "type": "string", "enum": ["GOAL", "YELLOW_CARD", "RED_CARD", "SUBSTITUTION"] },
+        "teamSide": { "type": "string", "enum": ["HOME", "AWAY"] },
+        "playerName": { "type": "string" },
+        "detail": { "type": "string" },
+        "visibility": { "type": "string", "enum": ["PUBLIC", "ARCHIVED"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["matchId", "minute", "type", "teamSide", "playerName", "visibility", "createdAt"]
+    },
+    "Wrestler": {
+      "title": "Wrestler",
+      "description": "Kokowa traditional wrestler profile.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "nickname": { "type": "string" },
+        "village": { "type": "string" },
+        "region": { "type": "string" },
+        "weightKg": { "type": "integer" },
+        "wins": { "type": "integer" },
+        "losses": { "type": "integer" },
+        "draws": { "type": "integer" },
+        "titlesCount": { "type": "integer" },
+        "bio": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "featured": { "type": "boolean" },
+        "visibility": { "type": "string", "enum": ["PUBLIC", "ARCHIVED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "nickname", "village", "region", "weightKg", "wins", "losses", "draws", "titlesCount", "bio", "featured", "visibility", "createdAt", "updatedAt"]
+    },
+    "KokowaEvent": {
+      "title": "KokowaEvent",
+      "description": "Kokowa traditional wrestling bout or competition.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "location": { "type": "string" },
+        "region": { "type": "string" },
+        "status": { "type": "string", "enum": ["LIVE", "UPCOMING", "COMPLETED"] },
+        "wrestlerAId": { "type": "string" },
+        "wrestlerAName": { "type": "string" },
+        "wrestlerBId": { "type": "string" },
+        "wrestlerBName": { "type": "string" },
+        "winnerName": { "type": "string" },
+        "roundLabel": { "type": "string" },
+        "broadcastId": { "type": "string" },
+        "scheduledLabel": { "type": "string" },
+        "visibility": { "type": "string", "enum": ["PUBLIC", "ARCHIVED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "location", "region", "status", "wrestlerAId", "wrestlerAName", "wrestlerBId", "wrestlerBName", "roundLabel", "scheduledLabel", "visibility", "createdAt", "updatedAt"]
+    },
+    "Tournament": {
+      "title": "Tournament",
+      "description": "Football or Kokowa tournament with standings, knockout bracket, and announcements.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "sportCategory": { "type": "string" },
+        "season": { "type": "string" },
+        "location": { "type": "string" },
+        "status": { "type": "string", "enum": ["ONGOING", "UPCOMING", "COMPLETED"] },
+        "championName": { "type": "string" },
+        "participantNames": { "type": "array" },
+        "knockoutBracketSummary": { "type": "array" },
+        "announcement": { "type": "string" },
+        "popular": { "type": "boolean" },
+        "visibility": { "type": "string", "enum": ["PUBLIC", "ARCHIVED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "sportCategory", "season", "location", "status", "participantNames", "knockoutBracketSummary", "popular", "visibility", "createdAt", "updatedAt"]
+    },
+    "NewsArticle": {
+      "title": "NewsArticle",
+      "description": "Sports news article or official announcement.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "body": { "type": "string" },
+        "sportCategory": { "type": "string" },
+        "authorName": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "breaking": { "type": "boolean" },
+        "visibility": { "type": "string", "enum": ["PUBLIC", "ARCHIVED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "summary", "body", "sportCategory", "authorName", "breaking", "visibility", "createdAt", "updatedAt"]
+    },
+    "HighlightVideo": {
+      "title": "HighlightVideo",
+      "description": "Video highlight clip from football or Kokowa.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "sportCategory": { "type": "string" },
+        "durationLabel": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "youtubeVideoId": { "type": "string" },
+        "viewCount": { "type": "integer" },
+        "featured": { "type": "boolean" },
+        "visibility": { "type": "string", "enum": ["PUBLIC", "ARCHIVED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "sportCategory", "durationLabel", "videoUrl", "viewCount", "featured", "visibility", "createdAt", "updatedAt"]
+    },
+    "SponsorBanner": {
+      "title": "SponsorBanner",
+      "description": "Optional sponsorship or promotional banner.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "sponsorName": { "type": "string" },
+        "ctaUrl": { "type": "string" },
+        "active": { "type": "boolean" },
+        "visibility": { "type": "string", "enum": ["PUBLIC", "ARCHIVED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "subtitle", "sponsorName", "active", "visibility", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private user profiles, favorites, and notification preferences."
+    },
+    "/staff/{staffId}": {
+      "schema": { "$ref": "#/entities/StaffMember" },
+      "description": "Staff RBAC directory."
+    },
+    "/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Immutable admin/staff audit trail."
+    },
+    "/sport_categories/{categoryId}": {
+      "schema": { "$ref": "#/entities/SportCategory" },
+      "description": "Dynamic sports categories including Football, Kokowa, and additional traditional sports."
+    },
+    "/broadcasts/{broadcastId}": {
+      "schema": { "$ref": "#/entities/Broadcast" },
+      "description": "Live and upcoming sports broadcasts."
+    },
+    "/broadcast_secrets/{broadcastId}": {
+      "schema": { "$ref": "#/entities/BroadcastSecret" },
+      "description": "Restricted stream ingest credentials for streaming managers and admins."
+    },
+    "/broadcasts/{broadcastId}/comments/{commentId}": {
+      "schema": { "$ref": "#/entities/ChatComment" },
+      "description": "Live chat comments for broadcasts."
+    },
+    "/leagues/{leagueId}": {
+      "schema": { "$ref": "#/entities/League" },
+      "description": "Sports leagues."
+    },
+    "/teams/{teamId}": {
+      "schema": { "$ref": "#/entities/Team" },
+      "description": "Teams and league standings."
+    },
+    "/matches/{matchId}": {
+      "schema": { "$ref": "#/entities/SportMatch" },
+      "description": "Live, upcoming, and completed matches."
+    },
+    "/matches/{matchId}/events/{eventId}": {
+      "schema": { "$ref": "#/entities/MatchEvent" },
+      "description": "Match goal, card, and substitution timeline events."
+    },
+    "/wrestlers/{wrestlerId}": {
+      "schema": { "$ref": "#/entities/Wrestler" },
+      "description": "Kokowa wrestler profiles."
+    },
+    "/kokowa_events/{eventId}": {
+      "schema": { "$ref": "#/entities/KokowaEvent" },
+      "description": "Kokowa traditional wrestling bouts and events."
+    },
+    "/tournaments/{tournamentId}": {
+      "schema": { "$ref": "#/entities/Tournament" },
+      "description": "Football and Kokowa tournaments."
+    },
+    "/news/{newsId}": {
+      "schema": { "$ref": "#/entities/NewsArticle" },
+      "description": "Sports news and announcements."
+    },
+    "/highlights/{highlightId}": {
+      "schema": { "$ref": "#/entities/HighlightVideo" },
+      "description": "Featured video highlights."
+    },
+    "/banners/{bannerId}": {
+      "schema": { "$ref": "#/entities/SponsorBanner" },
+      "description": "Optional sponsorship and promo banners."
+    }
+  }
+}

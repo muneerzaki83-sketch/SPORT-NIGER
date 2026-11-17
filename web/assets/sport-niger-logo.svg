@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="SPORT NIGER">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0E2C66" />
+      <stop offset="60%" stop-color="#060D1A" />
+      <stop offset="100%" stop-color="#03060C" />
+    </linearGradient>
+    <linearGradient id="blueRing" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00B4FF" />
+      <stop offset="100%" stop-color="#1565FF" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bgGrad)" stroke="url(#blueRing)" stroke-width="5" />
+  <!-- Niger Flag Ribbon Arc -->
+  <path d="M24 40 C50 22, 78 22, 104 40" fill="none" stroke="#FF8C1A" stroke-width="7" stroke-linecap="round" />
+  <path d="M24 49 C50 31, 78 31, 104 49" fill="none" stroke="#F5F8FF" stroke-width="7" stroke-linecap="round" />
+  <path d="M24 58 C50 40, 78 40, 104 58" fill="none" stroke="#0DB02B" stroke-width="7" stroke-linecap="round" />
+  <circle cx="64" cy="40" r="5.5" fill="#FF8C1A" />
+  <!-- Live Broadcast Play Emblem -->
+  <circle cx="64" cy="84" r="24" fill="#1565FF" opacity="0.92" />
+  <circle cx="64" cy="84" r="24" fill="none" stroke="#00B4FF" stroke-width="2.5" />
+  <polygon points="58,74 58,94 76,84" fill="#F5F8FF" />
+</svg>

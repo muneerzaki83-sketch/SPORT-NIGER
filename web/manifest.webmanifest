@@ -1,0 +1,16 @@
+{
+  "name": "SPORT NIGER",
+  "short_name": "SPORT NIGER",
+  "description": "Multilingual sports streaming platform for live football, Kokowa traditional wrestling, scores, and tournaments across Niger.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#060D1A",
+  "theme_color": "#1565FF",
+  "icons": [
+    {
+      "src": "/assets/sport-niger-logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
